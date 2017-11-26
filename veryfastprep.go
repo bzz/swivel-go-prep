@@ -23,9 +23,11 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"runtime/pprof"
+	"sync"
 	"time"
 )
 
@@ -38,8 +40,10 @@ const (
 )
 
 func main() {
-	var input = flag.String("input", "./data/enwik9", "the input text file")
+	var input = flag.String("input", "./data/fil9", "the input text file")
+	var n = flag.Int64("n", 1, "number of parallel IO threads")
 	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	var wg sync.WaitGroup
 
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -51,21 +55,74 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	size, elapsed := buildDict(input)
-	fmt.Printf("Read file:'%s', size:%.2f Mb, time:%.1f sec\n", *input, float64(size)/MB, elapsed.Seconds())
+	file, err := os.Open(*input)
+	if err != nil {
+		log.Fatalf("faild to read file %s: %v", *input, err)
+	}
+	defer file.Close()
+
+	chunks, chunkSize := split(file, *n)
+	fmt.Printf("File:'%s' splitted on %d chunks, %d Mb size\n", file.Name(), len(chunks), chunkSize/MB)
+	wg.Add(len(chunks))
+	for i, chunk := range chunks {
+		go buildDict(&wg, file.Name(), i, chunkSize, chunk)
+	}
+	wg.Wait()
 }
 
-// Builds a word dictionary from the given file. Returns a file size.
-func buildDict(file *string) (int64, time.Duration) {
-	start := time.Now()
-	f, err := os.Open(*file)
-	if err != nil {
-		log.Fatalf("faild to read file %s: %v", file, err)
+// Splits given file on N equal parts.
+func split(file *os.File, n int64) ([]io.ReadCloser, int64) {
+	if n <= 0 {
+		log.Fatalf("cann't split '%s' on %d parts", file.Name(), n)
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1*GB), wordMaxLength)
+	fi, err := file.Stat()
+	if err != nil {
+		log.Fatalf("faild to read file %s: %v", file.Name(), err)
+	}
+
+	fileSize := fi.Size()
+	if n > fileSize {
+		log.Fatalf("cann't split '%s' size:%d on %d parts", file.Name(), fileSize, n)
+	}
+	chunkSize := fileSize / n
+	first := chunkSize + fileSize%chunkSize
+	sum := first
+
+	chunkReaders := make([]io.ReadCloser, n)
+	//fmt.Printf("%d %d %d %d\n", fileSize, first, 0, 0)
+	chunkReaders[0] = newChunkReader(0, first, file.Name())
+	for i := first; i < fileSize; i += chunkSize {
+		//fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, i/chunkSize, i)
+		chunkReaders[i/chunkSize] = newChunkReader(i, chunkSize, file.Name())
+		sum += chunkSize
+	}
+	if sum != fileSize {
+		log.Fatalf("chunk split does not cover whole file")
+	}
+	return chunkReaders, chunkSize
+}
+
+func newChunkReader(start int64, blockSize int64, fileName string) io.ReadCloser {
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatalf("faild to read file %s: %v", fileName, err)
+	}
+
+	file.Seek(start, 0)
+	l := LimitReaderCloser(file, blockSize)
+	return l
+}
+
+// Builds a word dictionary from the given file
+func buildDict(wg *sync.WaitGroup, fileName string, chunkNum int, chunkSize int64, fileChunk io.ReadCloser) {
+	fmt.Printf("\t%d - reading file:'%s', size:%.2f Mb\n", chunkNum, fileName, float64(chunkSize)/MB)
+	defer wg.Done()
+	defer fileChunk.Close()
+	start := time.Now()
+
+	scanner := bufio.NewScanner(fileChunk)
+	scanner.Buffer(make([]byte, min(chunkSize, 100*MB)), wordMaxLength)
 	scanner.Split(bufio.ScanWords)
 	count := 0
 	for scanner.Scan() {
@@ -74,12 +131,40 @@ func buildDict(file *string) (int64, time.Duration) {
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading input:", err)
 	}
-	fmt.Printf("%d\n", count)
 
-	fi, err := f.Stat()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "faild to read file: %s err:%v", file, err)
-	}
 	elapsed := time.Since(start)
-	return fi.Size(), elapsed
+	fmt.Printf("\t%d - read time:%.1f sec, words:%d\n", chunkNum, elapsed.Seconds(), count)
+}
+
+func min(x, y int64) int64 {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+type LimitedReaderCloser struct {
+	R io.ReadCloser
+	N int64
+}
+
+func LimitReaderCloser(r io.ReadCloser, n int64) io.ReadCloser {
+	return &LimitedReaderCloser{R: r, N: n}
+}
+
+// https://golang.org/pkg/io/#LimitedReader.Read
+func (l *LimitedReaderCloser) Read(p []byte) (n int, err error) {
+	if l.N <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > l.N {
+		p = p[0:l.N]
+	}
+	n, err = l.R.Read(p)
+	l.N -= int64(n)
+	return
+}
+
+func (l *LimitedReaderCloser) Close() error {
+	return l.R.Close()
 }
