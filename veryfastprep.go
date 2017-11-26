@@ -26,6 +26,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -39,13 +40,32 @@ const (
 	GB
 )
 
-func main() {
-	var input = flag.String("input", "./data/fil9", "the input text file")
-	var n = flag.Int64("n", 1, "number of parallel IO threads")
-	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-	var wg sync.WaitGroup
+var usageMessage = `usage: veryfastprepgo [-n] [-input]
+Build word co-occurence matrix for Swivel.
+For more details see https://github.com/tensorflow/models/tree/master/research/swivel
+`
 
+func usage() {
+	fmt.Fprintf(os.Stderr, usageMessage)
+	flag.PrintDefaults()
+	os.Exit(2)
+}
+
+var (
+	input      = flag.String("input", "", "the input text file")
+	n          = flag.Int64("n", 1, "number of parallel IO threads")
+	cpuprofile = flag.String("cpuprofile", "", "write CPU profile to this file")
+	wg         sync.WaitGroup
+)
+
+func main() {
+	flag.Usage = usage
 	flag.Parse()
+	args := flag.Args()
+	if len(args) != 0 || len(*input) == 0 {
+		flag.Usage()
+	}
+
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
@@ -55,26 +75,26 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	file, err := os.Open(*input)
-	if err != nil {
-		log.Fatalf("faild to read file %s: %v", *input, err)
-	}
-	defer file.Close()
-
-	chunks, chunkSize := split(file, *n)
-	fmt.Printf("File:'%s' splitted on %d chunks, %d Mb size\n", file.Name(), len(chunks), chunkSize/MB)
+	chunks, chunkSize := split(*input, *n)
+	fmt.Printf("File:'%s' splitted on %d chunks, %d Mb size, using %d cores\n", *input, len(chunks), chunkSize/MB, runtime.NumCPU())
 	wg.Add(len(chunks))
 	for i, chunk := range chunks {
-		go buildDict(&wg, file.Name(), i, chunkSize, chunk)
+		go buildDict(&wg, *input, i, chunkSize, chunk)
 	}
 	wg.Wait()
 }
 
 // Splits given file on N equal parts.
-func split(file *os.File, n int64) ([]io.ReadCloser, int64) {
+func split(fileName string, n int64) ([]io.ReadCloser, int64) {
 	if n <= 0 {
-		log.Fatalf("cann't split '%s' on %d parts", file.Name(), n)
+		log.Fatalf("cann't split '%s' on %d parts", fileName, n)
 	}
+
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatalf("faild to read file %s: %v", fileName, err)
+	}
+	defer file.Close()
 
 	fi, err := file.Stat()
 	if err != nil {
