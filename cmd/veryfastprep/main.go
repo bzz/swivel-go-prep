@@ -5,14 +5,18 @@ package main
 
 // There are 3 implementation of data pre-processing required to train a Swivel model
 // - Python
+//   https://github.com/tensorflow/models/blob/master/research/swivel/prep.py
 // - C++
+//   https://github.com/tensorflow/models/blob/master/research/swivel/fastprep.cc
 // - Scala (Apache Spark)
+//   https://github.com/bzz/swivel-spark-prep
 //
-// This implementation takes advantage of multiple cores to saturate all avialable IO.
+// This single machine implementation takes advantage of multiple cores to saturate all avialable IO.
 // It consits of few stages:
 //  - building a vocabulary
-//  - computing word co-occurence stats
-//  - sharding co-occurence matrix and sorting each shard on disk
+//  - building word co-occurence matrix:
+//    * sharding co-occurence matrix
+//    * sorting each shard on disk
 //  - serializing shards to .pb format
 //
 // Vocabulary is assumed to fit in RAM
@@ -20,7 +24,6 @@ package main
 // Overall it's O(n) of the size of the input
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -30,14 +33,8 @@ import (
 	"runtime/pprof"
 	"sync"
 	"time"
-)
 
-const wordMaxLength = 10 * KB
-const (
-	_  = iota
-	KB = 1 << (10 * iota)
-	MB
-	GB
+	"github.com/bzz/swivel-go-prep"
 )
 
 var usageMessage = `usage: veryfastprepgo [-n] [-input]
@@ -53,6 +50,8 @@ func usage() {
 
 var (
 	input      = flag.String("input", "", "the input text file")
+	outpuDir   = flag.String("output_dir", "", "a dir where all output data will be stored")
+	shardSize  = flag.String("shard_size", "", "matrix shard size")
 	n          = flag.Int64("n", 1, "number of parallel IO threads")
 	cpuprofile = flag.String("cpuprofile", "", "write CPU profile to this file")
 	wg         sync.WaitGroup
@@ -75,13 +74,30 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	fmt.Println("Building vocabulary...")
+	vocabStart := time.Now()
 	chunks, chunkSize := split(*input, *n)
-	fmt.Printf("File:'%s' splitted on %d chunks, %d Mb size, using %d cores\n", *input, len(chunks), chunkSize/MB, runtime.NumCPU())
 	wg.Add(len(chunks))
 	for i, chunk := range chunks {
-		go buildDict(&wg, *input, i, chunkSize, chunk)
+		go veryfastprep.BuildVocab(&wg, *input, i, chunkSize, chunk)
 	}
 	wg.Wait()
+	fmt.Println("Done. %s s", time.Since(vocabStart).Seconds())
+
+	fmt.Println("Computing co-occurence matrix shards...")
+	shardsStart := time.Now()
+	//TODO
+	fmt.Println("Done. %s s", time.Since(shardsStart).Seconds())
+
+	fmt.Println("Sorting %d shards...")
+	sortStart := time.Now()
+	//TODO sort, merge in each shard
+	fmt.Println("Done. %s s", time.Since(sortStart).Seconds())
+
+	fmt.Println("Saving %d shards in ProtoBuf...")
+	saveStart := time.Now()
+	//TODO save to .pb
+	fmt.Println("Done. %s s", time.Since(saveStart).Seconds())
 }
 
 // Splits given file on N equal parts.
@@ -120,6 +136,7 @@ func split(fileName string, n int64) ([]io.ReadCloser, int64) {
 	if sum != fileSize {
 		log.Fatalf("chunk split does not cover whole file")
 	}
+	fmt.Printf("File:'%s' splitted on %d chunks, %d Mb size, using %d cores\n", fileName, n, chunkSize/veryfastprep.MB, runtime.NumCPU())
 	return chunkReaders, chunkSize
 }
 
@@ -130,61 +147,6 @@ func newChunkReader(start int64, blockSize int64, fileName string) io.ReadCloser
 	}
 
 	file.Seek(start, 0)
-	l := LimitReaderCloser(file, blockSize)
+	l := veryfastprep.LimitReaderCloser(file, blockSize)
 	return l
-}
-
-// Builds a word dictionary from the given file
-func buildDict(wg *sync.WaitGroup, fileName string, chunkNum int, chunkSize int64, fileChunk io.ReadCloser) {
-	fmt.Printf("\t%d - reading file:'%s', size:%.2f Mb\n", chunkNum, fileName, float64(chunkSize)/MB)
-	defer wg.Done()
-	defer fileChunk.Close()
-	start := time.Now()
-
-	scanner := bufio.NewScanner(fileChunk)
-	scanner.Buffer(make([]byte, min(chunkSize, 100*MB)), wordMaxLength)
-	scanner.Split(bufio.ScanWords)
-	count := 0
-	for scanner.Scan() {
-		count++
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading input:", err)
-	}
-
-	elapsed := time.Since(start)
-	fmt.Printf("\t%d - read time:%.1f sec, words:%d\n", chunkNum, elapsed.Seconds(), count)
-}
-
-func min(x, y int64) int64 {
-	if x < y {
-		return x
-	}
-	return y
-}
-
-type LimitedReaderCloser struct {
-	R io.ReadCloser
-	N int64
-}
-
-func LimitReaderCloser(r io.ReadCloser, n int64) io.ReadCloser {
-	return &LimitedReaderCloser{R: r, N: n}
-}
-
-// https://golang.org/pkg/io/#LimitedReader.Read
-func (l *LimitedReaderCloser) Read(p []byte) (n int, err error) {
-	if l.N <= 0 {
-		return 0, io.EOF
-	}
-	if int64(len(p)) > l.N {
-		p = p[0:l.N]
-	}
-	n, err = l.R.Read(p)
-	l.N -= int64(n)
-	return
-}
-
-func (l *LimitedReaderCloser) Close() error {
-	return l.R.Close()
 }
