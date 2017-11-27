@@ -75,18 +75,18 @@ type Range struct {
 }
 
 func splitRange(fileSize int64, n int64) ([]*Range, error) {
-	if n > fileSize || fileSize <= 0 {
+	if n > fileSize || fileSize <= 0 || n <= 0 {
 		return nil, fmt.Errorf("cann't split size:%d on %d parts", fileSize, n)
 	}
 	chunkSize := fileSize / n
-	first := chunkSize + fileSize%chunkSize
-	sum := first
+	firstSize := chunkSize + fileSize%n
+	sum := firstSize
 
 	chunks := make([]*Range, n)
-	//fmt.Printf("%d %d %d %d\n", fileSize, first,s 0, 0)
-	chunks[0] = &Range{0, first}
-	for i := first; i < fileSize; i += chunkSize {
-		//fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, i/chunkSize, i)
+	fmt.Printf("%d %d %d %d\n", fileSize, firstSize, 0, 0)
+	chunks[0] = &Range{0, firstSize}
+	for i := firstSize - 1; i < fileSize-1; i += chunkSize {
+		fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, i/chunkSize, i)
 		chunks[i/chunkSize] = &Range{i, chunkSize}
 		sum += chunkSize
 	}
