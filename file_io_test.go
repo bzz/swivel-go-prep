@@ -16,8 +16,11 @@ func TestSplit(t *testing.T) {
 		{0, 2, true, nil},
 		{7, -1, true, nil},
 		{7, 9, true, nil},
+		{6, 3, false, []int64{2, 2, 2}},
 		{7, 2, false, []int64{4, 3}},
 		{5, 4, false, []int64{2, 1, 1, 1}},
+		{10, 3, false, []int64{4, 3, 3}},
+		{4282519560, 3, false, []int64{1427506520, 1427506520, 1427506520}},
 	}
 
 	for _, tc := range testCases {

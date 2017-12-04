@@ -48,9 +48,10 @@ func splitRange(fileSize int64, n int64) ([]*Range, error) {
 	chunks := make([]*Range, n)
 	fmt.Printf("%d %d %d %d\n", fileSize, firstSize, 0, 0)
 	chunks[0] = &Range{0, firstSize}
-	for i := firstSize - 1; i < fileSize-1; i += chunkSize {
-		fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, i/chunkSize, i)
-		chunks[i/chunkSize] = &Range{i, chunkSize}
+	for off := firstSize; off < fileSize; off += chunkSize {
+		idx := (off-firstSize)/chunkSize + 1
+		fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, idx, off)
+		chunks[idx] = &Range{off, chunkSize}
 		sum += chunkSize
 	}
 	if sum != fileSize {
