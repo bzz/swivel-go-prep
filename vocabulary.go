@@ -18,10 +18,9 @@ const (
 )
 
 // Builds a vocabulary of words from the given file, sorted by frequency.
-func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, fileName string, chunkNum int, chunkSize int64, fileChunk io.ReadCloser) {
-	fmt.Printf("\t%d - reading file:'%s', size:%.2f Mb\n", chunkNum, fileName, float64(chunkSize)/MB)
+func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, chunkSize int64, fileChunk *io.SectionReader) {
+	fmt.Printf("\t%d - reading size:%.2f Mb\n", chunkNum, float64(chunkSize)/MB)
 	defer wg.Done()
-	defer fileChunk.Close()
 	start := time.Now()
 
 	vocab := make(map[string]int64) // TODO(bzz): compare to https://github.com/cornelk/hashmap
@@ -69,7 +68,7 @@ func SortVocab(vocab map[string]int64) Vocab {
 		pairs = append(pairs, KVPair{k, v})
 	}
 	//TODO sort pairs by v
-  //sort.Slice(p, func(i, j int) bool { return p[i].Name < p[j].Name })
+	//sort.Slice(p, func(i, j int) bool { return p[i].Name < p[j].Name })
 	return pairs
 }
 

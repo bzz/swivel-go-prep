@@ -85,7 +85,14 @@ func main() {
 
 	fmt.Println("Building vocabulary...")
 	vocabStart := time.Now()
-	chunks, err := veryfastprep.Split(*inputFileName, *n)
+
+	file, err := os.Open(*inputFileName)
+	if err != nil {
+		log.Fatal("faild to read file '%s'", *inputFileName, err)
+	}
+	defer file.Close()
+
+	chunks, err := veryfastprep.Split(file, *n)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -98,7 +105,7 @@ func main() {
 	}()
 
 	for i, chunk := range chunks {
-		go veryfastprep.BuildVocab(&wg, out, *inputFileName, i, chunk.N, chunk)
+		go veryfastprep.BuildVocab(&wg, out, i, chunk.Size(), chunk)
 	}
 
 	vocabulary := <-out
