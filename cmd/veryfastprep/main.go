@@ -1,6 +1,6 @@
 package main
 
-// A faster implementation of data preprocessing for Swivel
+// A faster implementation of data preprocessing for Swivel.
 // https://arxiv.org/abs/1602.02215
 
 // This single machine implementation takes advantage of multiple cores to saturate all avialable IO.
@@ -11,15 +11,16 @@ package main
 //    * sorting each shard on disk
 //  - serializing shards to .pb format
 //
-// Vocabulary is assumed to fit in RAM
-// It uses O(1) RAM for building/sorting shards
-// Overall it's O(n) of the size of the input
+// Vocabulary is assumed to fit in RAM (twice).
+// It uses O(1) RAM for building/sorting shards.
+// Overall it's O(n) of the size of the input.
 
 import (
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -43,7 +44,9 @@ var (
 	outpuDir      = flag.String("output_dir", "", "a dir for all output data to be stored")
 	shardSize     = flag.Int("shard_size", 4096, "matrix shard size")
 	n             = flag.Int64("n", 1, "number of parallel IO threads")
-	cpuprofile    = flag.String("cpuprofile", "", "write CPU profile to this file")
+	cpuprofile    = flag.String("cpuprofile", "", "write CPU profile to the file")
+	blockprofile  = flag.String("blockprofile", "", "write block profile to the file")
+	mutexprofile  = flag.String("mutexprofile", "", "write mutex contention profile to the file")
 	wg            sync.WaitGroup
 )
 
@@ -63,10 +66,26 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+	if *blockprofile != "" {
+		f, err := os.Create(*blockprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		runtime.SetBlockProfileRate(1)
+		defer pprof.Lookup("block").WriteTo(f, 0)
+	}
+	if *mutexprofile != "" {
+		f, err := os.Create(*mutexprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		runtime.SetMutexProfileFraction(1)
+		defer pprof.Lookup("mutex").WriteTo(f, 0)
+	}
 
 	fmt.Println("Building vocabulary...")
 	vocabStart := time.Now()
-	chunks, chunkSize, err := veryfastprep.Split(*inputFileName, *n)
+	chunks, err := veryfastprep.Split(*inputFileName, *n)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -79,18 +98,22 @@ func main() {
 	}()
 
 	for i, chunk := range chunks {
-		go veryfastprep.BuildVocab(&wg, out, *inputFileName, i, chunkSize, chunk)
+		go veryfastprep.BuildVocab(&wg, out, *inputFileName, i, chunk.N, chunk)
 	}
 
 	vocabulary := <-out
 	for v := range out {
 		veryfastprep.MergeVocab(*vocabulary, *v)
 	}
+	wordToID := veryfastprep.SortVocab(*vocabulary)
 	fmt.Printf("Done. %.1f s, size: %d\n", time.Since(vocabStart).Seconds(), len(*vocabulary))
 
 	fmt.Println("Computing co-occurence matrix shards...")
 	shardsStart := time.Now()
+	_ = wordToID
 	//TODO
+	// for word in word_window(10, chunk)
+	// (wordToID[word], wordToID[word+1], 1)
 	fmt.Printf("Done. %.1f s\n", time.Since(shardsStart).Seconds())
 
 	shardsNum := len(*vocabulary) / *shardSize
@@ -101,6 +124,6 @@ func main() {
 
 	fmt.Printf("Saving %d shards in ProtoBuf...\n", shardsNum)
 	saveStart := time.Now()
-	//TODO save to .pb
+	//TODO serialize to .pb
 	fmt.Printf("Done. %.1f s\n", time.Since(saveStart).Seconds())
 }

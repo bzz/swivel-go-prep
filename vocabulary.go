@@ -24,9 +24,9 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, fileName string,
 	defer fileChunk.Close()
 	start := time.Now()
 
-	vocab := make(map[string]int64)
+	vocab := make(map[string]int64) // TODO(bzz): compare to https://github.com/cornelk/hashmap
 	scanner := bufio.NewScanner(fileChunk)
-	scanner.Buffer(make([]byte, min(chunkSize, 100*MB)), wordMaxLength)
+	scanner.Buffer(make([]byte, min(chunkSize, 200*MB)), wordMaxLength)
 	scanner.Split(bufio.ScanWords)
 	count := 0
 	for scanner.Scan() {
@@ -50,6 +50,27 @@ func MergeVocab(dst map[string]int64, src map[string]int64) {
 		v2 := dst[k]
 		dst[k] = v + v2
 	}
+}
+
+type Vocab []KVPair
+
+type KVPair struct {
+	k string
+	v int64
+}
+
+func (*Vocab) Get(word string) {
+	//TODO binary search in []KVPair
+}
+
+func SortVocab(vocab map[string]int64) Vocab {
+	var pairs = make([]KVPair, len(vocab))
+	for k, v := range vocab {
+		pairs = append(pairs, KVPair{k, v})
+	}
+	//TODO sort pairs by v
+  //sort.Slice(p, func(i, j int) bool { return p[i].Name < p[j].Name })
+	return pairs
 }
 
 func min(x, y int64) int64 {

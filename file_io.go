@@ -10,18 +10,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-// io.LimiteddReader that can be closed.
+// io.LimitedReader that can be closed.
 type LimitedReaderCloser struct {
 	R io.ReadCloser
 	N int64
 }
 
-func LimitReaderCloser(r io.ReadCloser, n int64) io.ReadCloser {
-	return &LimitedReaderCloser{R: r, N: n}
-}
-
 // https://golang.org/pkg/io/#LimitedReader.Read
 func (l *LimitedReaderCloser) Read(p []byte) (n int, err error) {
+	fmt.Printf("\t\tReading %d Mb\n", len(p)/MB)
 	if l.N <= 0 {
 		return 0, io.EOF
 	}
@@ -38,35 +35,33 @@ func (l *LimitedReaderCloser) Close() error {
 }
 
 // Splits given file on N equal parts.
-func Split(fileName string, n int64) ([]io.ReadCloser, int64, error) {
+func Split(fileName string, n int64) ([]*LimitedReaderCloser, error) {
 	if n <= 0 {
-		return nil, 0, fmt.Errorf("cann't split '%s' on %d parts", fileName, n)
+		return nil, fmt.Errorf("cann't split '%s' on %d parts", fileName, n)
 	}
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "faild to read file '%s'", fileName)
+		return nil, errors.Wrapf(err, "faild to read file '%s'", fileName)
 	}
 	defer file.Close()
 
 	fi, err := file.Stat()
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "faild to get stats for '%s'", file.Name())
+		return nil, errors.Wrapf(err, "faild to get stats for '%s'", file.Name())
 	}
 
-	var readers []io.ReadCloser
 	chunks, err := splitRange(fi.Size(), n)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	var chunkSize int64
+	var readers []*LimitedReaderCloser
 	for _, c := range chunks {
 		readers = append(readers, newChunkReader(c.Start, c.Size, file.Name()))
-		chunkSize = c.Size
 	}
-	fmt.Printf("File '%s': %d chunks, %d Mb, using %d cores\n", file.Name(), n, chunkSize/MB, runtime.NumCPU())
-	return readers, chunkSize, nil
+	fmt.Printf("File '%s': %d chunks, %d Mb, using %d cores\n", file.Name(), n, chunks[0].Size/MB, runtime.NumCPU())
+	return readers, nil
 }
 
 type Range struct {
@@ -96,13 +91,15 @@ func splitRange(fileSize int64, n int64) ([]*Range, error) {
 	return chunks, nil
 }
 
-func newChunkReader(start int64, blockSize int64, fileName string) io.ReadCloser {
+func newChunkReader(start int64, blockSize int64, fileName string) *LimitedReaderCloser {
 	file, err := os.Open(fileName)
 	if err != nil {
-		log.Fatalf("faild to read file %s: %v", fileName, err)
+		log.Fatalf("faild to open file %s: %v", fileName, err)
 	}
-
-	file.Seek(start, 0)
-	l := LimitReaderCloser(file, blockSize)
-	return l
+	fmt.Printf("\tOpen file %s at %d\n", fileName, start)
+	ret, err := file.Seek(start, 0)
+	if err != nil || ret != start {
+		log.Fatalf("faild to seek in file %s to %d: %v", fileName, start, err)
+	}
+	return &LimitedReaderCloser{R: file, N: blockSize}
 }
