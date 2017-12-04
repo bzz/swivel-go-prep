@@ -20,14 +20,14 @@ const (
 )
 
 // Builds a vocabulary of words from the given file, sorted by frequency.
-func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, chunkSize int64, fileChunk *io.SectionReader) {
+func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, chunkSize int64, fileChunk *io.SectionReader, bufSize int64) {
 	fmt.Printf("\t%d - reading size:%.2f Mb\n", chunkNum, float64(chunkSize)/MB)
 	defer wg.Done()
 	start := time.Now()
 
 	vocab := make(map[string]int64) // TODO(bzz): compare to https://github.com/cornelk/hashmap
 	scanner := bufio.NewScanner(fileChunk)
-	scanner.Buffer(make([]byte, min(chunkSize, 200*MB)), wordMaxLength)
+	scanner.Buffer(make([]byte, min(chunkSize, bufSize*MB)), wordMaxLength)
 	scanner.Split(bufio.ScanWords)
 	count := 0
 	for scanner.Scan() {

@@ -44,6 +44,7 @@ var (
 	outpuDir      = flag.String("output_dir", "", "a dir for all output data to be stored")
 	shardSize     = flag.Int("shard_size", 4096, "matrix shard size")
 	n             = flag.Int64("n", 1, "number of parallel IO threads")
+	block         = flag.Int64("block", 10, "size of the IO buffer in Mb")
 	cpuprofile    = flag.String("cpuprofile", "", "write CPU profile to the file")
 	blockprofile  = flag.String("blockprofile", "", "write block profile to the file")
 	mutexprofile  = flag.String("mutexprofile", "", "write mutex contention profile to the file")
@@ -105,7 +106,7 @@ func main() {
 	}()
 
 	for i, chunk := range chunks {
-		go veryfastprep.BuildVocab(&wg, out, i, chunk.Size(), chunk)
+		go veryfastprep.BuildVocab(&wg, out, i, chunk.Size(), chunk, *block)
 	}
 
 	vocabulary := <-out
