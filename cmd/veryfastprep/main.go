@@ -113,6 +113,7 @@ func main() {
 		veryfastprep.MergeVocab(*vocabulary, *v)
 	}
 	wordToID := veryfastprep.SortVocab(*vocabulary)
+	wordToID.Print()
 	fmt.Printf("Done. %.1f s, size: %d\n", time.Since(vocabStart).Seconds(), len(*vocabulary))
 
 	fmt.Println("Computing co-occurence matrix shards...")

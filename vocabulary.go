@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,9 +32,10 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, ch
 	count := 0
 	for scanner.Scan() {
 		count++
-		word := scanner.Text()
-		val := vocab[word]
-		vocab[word] = val + 1
+		word := strings.TrimSpace(scanner.Text())
+		if word != "" {
+			vocab[word]++
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading input:", err)
@@ -40,7 +43,7 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, ch
 
 	out <- &vocab
 	elapsed := time.Since(start)
-	fmt.Printf("\t%d - read time:%.1f sec, words:%d\n", chunkNum, elapsed.Seconds(), count)
+	fmt.Printf("\t%d - read time:%.1f sec, words:%d, uniq:%d\n", chunkNum, elapsed.Seconds(), count, len(vocab))
 }
 
 // Merge src vocabulary to dst.
@@ -51,25 +54,37 @@ func MergeVocab(dst map[string]int64, src map[string]int64) {
 	}
 }
 
-type Vocab []KVPair
+type Vocab []*KVPair
 
 type KVPair struct {
-	k string
-	v int64
+	K string
+	V int64
 }
 
-func (*Vocab) Get(word string) {
+func (v *Vocab) Get(word string) {
 	//TODO binary search in []KVPair
 }
 
-func SortVocab(vocab map[string]int64) Vocab {
-	var pairs = make([]KVPair, len(vocab))
-	for k, v := range vocab {
-		pairs = append(pairs, KVPair{k, v})
+func (v *Vocab) Print() {
+	fmt.Printf("\n\tVocabulary:\n")
+	for i, word := range *v {
+		fmt.Printf("\t %s - %d\n", word.K, word.V)
+		if i > 10 {
+			break
+		}
 	}
-	//TODO sort pairs by v
-	//sort.Slice(p, func(i, j int) bool { return p[i].Name < p[j].Name })
-	return pairs
+	fmt.Printf("Vocab size: %d\n", len(*v))
+}
+
+func SortVocab(vocab map[string]int64) Vocab {
+	var p []*KVPair = make([]*KVPair, len(vocab))
+	i := 0
+	for k, v := range vocab {
+		p[i] = &KVPair{k, v}
+		i++
+	}
+	sort.Slice(p, func(i, j int) bool { return p[i].V > p[j].V })
+	return p
 }
 
 func min(x, y int64) int64 {
