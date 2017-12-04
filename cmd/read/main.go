@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime/pprof"
 	"time"
 )
 
@@ -27,8 +28,9 @@ Read a single file as fast as possible
 }
 
 var (
-	file  = flag.String("file", "", "the input text file")
-	block = flag.Int("block", 100, "size of the block in Mb")
+	file       = flag.String("file", "", "the input text file")
+	block      = flag.Int("block", 100, "size of the block in Mb")
+	cpuprofile = flag.String("cpuprofile", "", "write CPU profile to the file")
 )
 
 func main() {
@@ -37,6 +39,15 @@ func main() {
 	args := flag.Args()
 	if len(args) != 0 || len(*file) == 0 {
 		flag.Usage()
+	}
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
 	f, err := os.Open(*file)
@@ -48,13 +59,15 @@ func main() {
 	r := bufio.NewReaderSize(f, *block*MB)
 	mem := make([]byte, *block*MB)
 
+	var total float64 = 0
 	count := 0
 	for {
 		start := time.Now()
 		if n, err := r.Read(mem); err == nil || err == io.EOF {
 			took := time.Since(start).Seconds()
-			fmt.Printf("\t%dMb read, took %.2fs - %.2f Mb/s \n", n/MB, took, float64(n)/MB/took)
+			//fmt.Printf("\t%dMb read, took %.2fs - %.2f Mb/s \n", n/MB, took, float64(n)/MB/took)
 			count += n
+			total += took
 			if err == io.EOF {
 				break
 			}
@@ -63,5 +76,5 @@ func main() {
 		}
 	}
 
-	fmt.Printf("%d bytes total\n", count)
+	fmt.Printf("%d Mb total, avg: %.2f Mb/sec\n", count/MB, float64(count)/MB/total)
 }
