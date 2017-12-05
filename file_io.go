@@ -9,7 +9,7 @@ import (
 )
 
 // Splits given file on N equal parts.
-func Split(file *os.File, n int64) ([]*io.SectionReader, error) {
+func Split(file *os.File, n int64, verbose bool) ([]*io.SectionReader, error) {
 	if n <= 0 {
 		return nil, fmt.Errorf("cann't split '%s' on %d parts", file.Name(), n)
 	}
@@ -19,7 +19,7 @@ func Split(file *os.File, n int64) ([]*io.SectionReader, error) {
 		return nil, errors.Wrapf(err, "faild to get stats for '%s'", file.Name())
 	}
 
-	chunks, err := splitRange(fi.Size(), n)
+	chunks, err := splitRange(fi.Size(), n, verbose)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ type Range struct {
 	Size  int64
 }
 
-func splitRange(fileSize int64, n int64) ([]*Range, error) {
+func splitRange(fileSize int64, n int64, verbose bool) ([]*Range, error) {
 	if n > fileSize || fileSize <= 0 || n <= 0 {
 		return nil, fmt.Errorf("cann't split size:%d on %d parts", fileSize, n)
 	}
@@ -46,11 +46,15 @@ func splitRange(fileSize int64, n int64) ([]*Range, error) {
 	sum := firstSize
 
 	chunks := make([]*Range, n)
-	fmt.Printf("%d %d %d %d\n", fileSize, firstSize, 0, 0)
+	if verbose {
+		fmt.Printf("%d %d %d %d\n", fileSize, firstSize, 0, 0)
+	}
 	chunks[0] = &Range{0, firstSize}
 	for off := firstSize; off < fileSize; off += chunkSize {
 		idx := (off-firstSize)/chunkSize + 1
-		fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, idx, off)
+		if verbose {
+			fmt.Printf("%d %d %d %d\n", fileSize, chunkSize, idx, off)
+		}
 		chunks[idx] = &Range{off, chunkSize}
 		sum += chunkSize
 	}

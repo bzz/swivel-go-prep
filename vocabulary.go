@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -32,10 +31,7 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, ch
 	count := 0
 	for scanner.Scan() {
 		count++
-		word := strings.TrimSpace(scanner.Text())
-		if word != "" {
-			vocab[word]++
-		}
+		vocab[scanner.Text()]++
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading input:", err)

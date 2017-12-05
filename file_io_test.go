@@ -25,7 +25,7 @@ func TestSplit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%d on %d parts", tc.whole, tc.parts), func(t *testing.T) {
-			ranges, err := splitRange(tc.whole, tc.parts)
+			ranges, err := splitRange(tc.whole, tc.parts, true)
 			if tc.err != (err != nil) { // xor
 				t.Errorf("got error '%s'; should have error? %t", err, tc.err)
 			}

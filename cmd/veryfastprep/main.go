@@ -45,6 +45,7 @@ var (
 	shardSize     = flag.Int("shard_size", 4096, "matrix shard size")
 	n             = flag.Int64("n", 1, "number of parallel IO threads")
 	block         = flag.Int64("block", 10, "size of the IO buffer in Mb")
+	verbose       = flag.Bool("v", false, "print verbose output")
 	cpuprofile    = flag.String("cpuprofile", "", "write CPU profile to the file")
 	blockprofile  = flag.String("blockprofile", "", "write block profile to the file")
 	mutexprofile  = flag.String("mutexprofile", "", "write mutex contention profile to the file")
@@ -93,7 +94,7 @@ func main() {
 	}
 	defer file.Close()
 
-	chunks, err := veryfastprep.Split(file, *n)
+	chunks, err := veryfastprep.Split(file, *n, *verbose)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -114,7 +115,9 @@ func main() {
 		veryfastprep.MergeVocab(*vocabulary, *v)
 	}
 	wordToID := veryfastprep.SortVocab(*vocabulary)
-	wordToID.Print()
+	if *verbose {
+		wordToID.Print()
+	}
 	fmt.Printf("Done. %.1f s, size: %d\n", time.Since(vocabStart).Seconds(), len(*vocabulary))
 
 	fmt.Println("Computing co-occurence matrix shards...")
