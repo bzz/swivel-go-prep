@@ -90,7 +90,7 @@ func main() {
 
 	file, err := os.Open(*inputFileName)
 	if err != nil {
-		log.Fatal("faild to read file '%s'", *inputFileName, err)
+		log.Fatalf("failed to read file '%s': %v\n", *inputFileName, err)
 	}
 	defer file.Close()
 

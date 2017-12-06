@@ -27,7 +27,7 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, ch
 	vocab := make(map[string]int64) // TODO(bzz): compare to https://github.com/cornelk/hashmap
 	scanner := bufio.NewScanner(fileChunk)
 	scanner.Buffer(make([]byte, min(chunkSize, bufSize*MB)), wordMaxLength)
-	scanner.Split(bufio.ScanWords)
+	scanner.Split(ScanWordAsciiSpace)
 	count := 0
 	for scanner.Scan() {
 		count++
@@ -40,6 +40,37 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, ch
 	out <- &vocab
 	elapsed := time.Since(start)
 	fmt.Printf("\t%d - read time:%.1f sec, words:%d, uniq:%d\n", chunkNum, elapsed.Seconds(), count, len(vocab))
+}
+
+// ScanCtypeWord is a split funciton for a Scanner that returns
+// space-separated word of text, with space defined as in
+// http://www.cplusplus.com/reference/cctype/isspace
+// Analog of bufio.ScanWords but for C sub-set of whitespace chars.
+func ScanWordAsciiSpace(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	start := 0
+	for ; start < len(data); start++ {
+		if !isCspace(data[start]) {
+			break
+		}
+	}
+	for j := start; j < len(data); j++ {
+		if isCspace(data[j]) {
+			return j + 1, data[start:j], nil
+		}
+	}
+	// If at EOF, we have a final, non-empty, non-terminated word. Return it.
+	if atEOF && len(data) > start {
+		return len(data), data[start:], nil
+	}
+	return start, nil, nil
+}
+
+func isCspace(c byte) bool {
+	switch c {
+	case ' ', '\n', '\r', '\t', '\v', '\f':
+		return true
+	}
+	return false
 }
 
 // Merge src vocabulary to dst.
