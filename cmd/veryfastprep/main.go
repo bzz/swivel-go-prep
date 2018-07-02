@@ -20,8 +20,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 	"sync"
 	"time"
 
@@ -40,15 +42,16 @@ func usage() {
 }
 
 var (
-	inputFileName = flag.String("input", "", "the input text file")
+	inputFileName = flag.String("input", "", "input text file")
 	outpuDir      = flag.String("output_dir", "", "a dir for all output data to be stored")
 	shardSize     = flag.Int("shard_size", 4096, "matrix shard size")
 	n             = flag.Int64("n", 1, "number of parallel IO threads")
-	block         = flag.Int64("block", 10, "size of the IO buffer in Mb")
+	block         = flag.Int64("block", 10, "size of the IO buffer per thread, in Mb")
 	verbose       = flag.Bool("v", false, "print verbose output")
 	cpuprofile    = flag.String("cpuprofile", "", "write CPU profile to the file")
 	blockprofile  = flag.String("blockprofile", "", "write block profile to the file")
 	mutexprofile  = flag.String("mutexprofile", "", "write mutex contention profile to the file")
+	tracing       = flag.String("tracing", "", "write execution traces to the file")
 	wg            sync.WaitGroup
 )
 
@@ -84,6 +87,14 @@ func main() {
 		runtime.SetMutexProfileFraction(1)
 		defer pprof.Lookup("mutex").WriteTo(f, 0)
 	}
+	if *tracing != "" {
+		f, err := os.Create(*tracing)
+		if err != nil {
+			log.Fatal(err)
+		}
+		_ = trace.Start(f)
+		defer trace.Stop()
+	}
 
 	fmt.Println("Building vocabulary...")
 	vocabStart := time.Now()
@@ -118,6 +129,7 @@ func main() {
 	if *verbose {
 		wordToID.Print()
 	}
+	wordToID.Save(path.Join(*outpuDir, "dict.txt"))
 	fmt.Printf("Done. %.1f s, size: %d\n", time.Since(vocabStart).Seconds(), len(*vocabulary))
 
 	fmt.Println("Computing co-occurence matrix shards...")

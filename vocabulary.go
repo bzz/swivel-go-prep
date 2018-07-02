@@ -18,7 +18,7 @@ const (
 	GB
 )
 
-// Builds a vocabulary of words from the given file, sorted by frequency.
+// BuildVocab builds a vocabulary of words from the given file, sorted by frequency.
 func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, chunkSize int64, fileChunk *io.SectionReader, bufSize int64) {
 	fmt.Printf("\t%d - reading size:%.2f Mb\n", chunkNum, float64(chunkSize)/MB)
 	defer wg.Done()
@@ -42,7 +42,7 @@ func BuildVocab(wg *sync.WaitGroup, out chan *map[string]int64, chunkNum int, ch
 	fmt.Printf("\t%d - read time:%.1f sec, words:%d, uniq:%d\n", chunkNum, elapsed.Seconds(), count, len(vocab))
 }
 
-// ScanCtypeWord is a split funciton for a Scanner that returns
+// ScanWordAsciiSpace is a split funciton for a Scanner that returns
 // space-separated word of text, with space defined as in
 // http://www.cplusplus.com/reference/cctype/isspace
 // Analog of bufio.ScanWords but for C sub-set of whitespace chars.
@@ -73,7 +73,7 @@ func isCspace(c byte) bool {
 	return false
 }
 
-// Merge src vocabulary to dst.
+// MergeVocab merges src vocabulary to dst.
 func MergeVocab(dst map[string]int64, src map[string]int64) {
 	for k, v := range src {
 		v2 := dst[k]
@@ -101,6 +101,12 @@ func (v *Vocab) Print() {
 		}
 	}
 	fmt.Printf("Vocab size: %d\n", len(*v))
+}
+
+func (v *Vocab) Save(path string) {
+	//pick a filename in path
+	//save _col
+	//save _row
 }
 
 func SortVocab(vocab map[string]int64) Vocab {
